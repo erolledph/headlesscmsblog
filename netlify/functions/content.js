@@ -15,25 +15,47 @@ const serviceAccount = {
   "universe_domain": "googleapis.com"
 };
 
+// Global variables to store initialized services
+let db = null;
+let isInitialized = false;
+
 // Initialize Firebase Admin only once
-let db;
-try {
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      projectId: 'ectawks'
-    });
+function initializeFirebase() {
+  if (isInitialized) {
+    return db;
   }
-  db = admin.firestore();
-} catch (error) {
-  console.error('Firebase initialization error:', error);
+
+  try {
+    // Check if any Firebase apps are already initialized
+    if (admin.apps.length === 0) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id,
+        databaseURL: `https://${serviceAccount.project_id}-default-rtdb.firebaseio.com/`
+      });
+      console.log('Firebase Admin initialized successfully');
+    }
+    
+    db = admin.firestore();
+    
+    // Configure Firestore settings
+    db.settings({
+      ignoreUndefinedProperties: true
+    });
+    
+    isInitialized = true;
+    return db;
+  } catch (error) {
+    console.error('Firebase initialization error:', error);
+    throw error;
+  }
 }
 
 exports.handler = async (event, context) => {
   // Set CORS headers
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Content-Type': 'application/json'
   };
@@ -56,83 +78,119 @@ exports.handler = async (event, context) => {
     };
   }
 
-  // Check if Firebase is initialized
-  if (!db) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ 
-        error: 'Firebase initialization failed',
-        message: 'Database connection could not be established'
-      })
-    };
-  }
-
   try {
+    console.log('Initializing Firebase...');
+    const firestore = initializeFirebase();
+    
+    if (!firestore) {
+      throw new Error('Failed to initialize Firestore');
+    }
+
     console.log('Attempting to fetch content from Firestore...');
     
-    // Get published content from Firestore
-    const snapshot = await db.collection('content')
-      .where('status', '==', 'published')
-      .get();
+    // Get published content from Firestore with error handling
+    const contentRef = firestore.collection('content');
+    const query = contentRef.where('status', '==', 'published');
+    
+    console.log('Executing Firestore query...');
+    const snapshot = await query.get();
 
-    console.log(`Found ${snapshot.size} published documents`);
+    console.log(`Query executed successfully. Found ${snapshot.size} documents`);
 
     const content = [];
-    snapshot.forEach(doc => {
-      try {
-        const data = doc.data();
-        content.push({
-          id: doc.id,
-          title: data.title || '',
-          slug: data.slug || '',
-          content: data.content || '',
-          featuredImageUrl: data.featuredImageUrl || '',
-          metaDescription: data.metaDescription || '',
-          seoTitle: data.seoTitle || '',
-          keywords: Array.isArray(data.keywords) ? data.keywords : [],
-          author: data.author || '',
-          categories: Array.isArray(data.categories) ? data.categories : [],
-          tags: Array.isArray(data.tags) ? data.tags : [],
-          status: data.status || 'draft',
-          publishDate: data.publishDate?.toDate?.()?.toISOString() || null,
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null
-        });
-      } catch (docError) {
-        console.error('Error processing document:', doc.id, docError);
-      }
-    });
+    
+    if (!snapshot.empty) {
+      snapshot.forEach(doc => {
+        try {
+          const data = doc.data();
+          console.log(`Processing document ${doc.id}:`, Object.keys(data));
+          
+          // Safely convert Firestore timestamps
+          const publishDate = data.publishDate && data.publishDate.toDate ? 
+            data.publishDate.toDate().toISOString() : 
+            (data.publishDate || null);
+            
+          const createdAt = data.createdAt && data.createdAt.toDate ? 
+            data.createdAt.toDate().toISOString() : 
+            (data.createdAt || new Date().toISOString());
+            
+          const updatedAt = data.updatedAt && data.updatedAt.toDate ? 
+            data.updatedAt.toDate().toISOString() : 
+            (data.updatedAt || createdAt);
 
-    // Sort by publishDate in JavaScript instead of Firestore
+          content.push({
+            id: doc.id,
+            title: data.title || '',
+            slug: data.slug || '',
+            content: data.content || '',
+            featuredImageUrl: data.featuredImageUrl || '',
+            metaDescription: data.metaDescription || '',
+            seoTitle: data.seoTitle || data.title || '',
+            keywords: Array.isArray(data.keywords) ? data.keywords : 
+                     (typeof data.keywords === 'string' ? data.keywords.split(',').map(k => k.trim()) : []),
+            author: data.author || '',
+            categories: Array.isArray(data.categories) ? data.categories : 
+                       (typeof data.categories === 'string' ? data.categories.split(',').map(c => c.trim()) : []),
+            tags: Array.isArray(data.tags) ? data.tags : 
+                 (typeof data.tags === 'string' ? data.tags.split(',').map(t => t.trim()) : []),
+            status: data.status || 'draft',
+            publishDate,
+            createdAt,
+            updatedAt
+          });
+        } catch (docError) {
+          console.error(`Error processing document ${doc.id}:`, docError);
+          // Continue processing other documents
+        }
+      });
+    }
+
+    // Sort by publishDate or createdAt in descending order (newest first)
     content.sort((a, b) => {
       const dateA = new Date(a.publishDate || a.createdAt || 0);
       const dateB = new Date(b.publishDate || b.createdAt || 0);
-      return dateB - dateA; // Descending order (newest first)
+      return dateB - dateA;
     });
 
-    console.log(`Returning ${content.length} content items`);
+    console.log(`Successfully processed ${content.length} content items`);
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify(content)
+      body: JSON.stringify(content, null, 2)
     };
 
   } catch (error) {
-    console.error('Detailed error fetching content:', {
+    console.error('Detailed error in Netlify function:', {
       message: error.message,
       code: error.code,
-      stack: error.stack
+      stack: error.stack,
+      name: error.name
     });
     
+    // Provide more specific error messages
+    let errorMessage = 'Internal server error';
+    let statusCode = 500;
+    
+    if (error.code === 16 || error.message.includes('UNAUTHENTICATED')) {
+      errorMessage = 'Firebase authentication failed. Please check service account credentials.';
+      statusCode = 401;
+    } else if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+      errorMessage = 'Permission denied. Please check Firestore security rules.';
+      statusCode = 403;
+    } else if (error.message.includes('not found')) {
+      errorMessage = 'Firestore collection not found.';
+      statusCode = 404;
+    }
+    
     return {
-      statusCode: 500,
+      statusCode,
       headers,
       body: JSON.stringify({ 
-        error: 'Internal server error',
+        error: errorMessage,
         message: error.message,
-        code: error.code || 'UNKNOWN_ERROR'
+        code: error.code || 'UNKNOWN_ERROR',
+        timestamp: new Date().toISOString()
       })
     };
   }
