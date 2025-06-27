@@ -28,8 +28,8 @@ const totalContentEl = document.getElementById('totalContent');
 const publishedContentEl = document.getElementById('publishedContent');
 const draftContentEl = document.getElementById('draftContent');
 
-// Content table
-const contentTableBody = document.getElementById('contentTableBody');
+// Content grid
+const contentGrid = document.getElementById('contentGrid');
 const refreshContentBtn = document.getElementById('refreshContent');
 
 // Initialize app
@@ -184,7 +184,7 @@ async function handleContentSubmit(e) {
         if (editingId) {
             // Update existing content
             await firebaseServices.db.collection('content').doc(editingId).update(contentData);
-            alert('Content updated successfully!');
+            showNotification('Content updated successfully!', 'success');
         } else {
             // Create new content
             contentData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
@@ -193,7 +193,7 @@ async function handleContentSubmit(e) {
                 : null;
             
             await firebaseServices.db.collection('content').add(contentData);
-            alert('Content created successfully!');
+            showNotification('Content created successfully!', 'success');
         }
 
         // Reset form and refresh content
@@ -210,7 +210,7 @@ async function handleContentSubmit(e) {
         
     } catch (error) {
         console.error('Error saving content:', error);
-        alert('Error saving content: ' + error.message);
+        showNotification('Error saving content: ' + error.message, 'error');
     } finally {
         hideLoading();
     }
@@ -237,11 +237,11 @@ async function loadContent() {
         });
         
         updateStats();
-        renderContentTable();
+        renderContentGrid();
         
     } catch (error) {
         console.error('Error loading content:', error);
-        alert('Error loading content: ' + error.message);
+        showNotification('Error loading content: ' + error.message, 'error');
     } finally {
         hideLoading();
     }
@@ -257,40 +257,108 @@ function updateStats() {
     draftContentEl.textContent = drafts;
 }
 
-function renderContentTable() {
-    contentTableBody.innerHTML = '';
+function renderContentGrid() {
+    if (!contentGrid) return;
+    
+    contentGrid.innerHTML = '';
+    
+    if (allContent.length === 0) {
+        contentGrid.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📝</div>
+                <h3>No content yet</h3>
+                <p>Create your first piece of content to get started!</p>
+            </div>
+        `;
+        return;
+    }
     
     allContent.forEach(item => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>
-                <strong>${item.title}</strong>
-                <br>
-                <small style="color: #666;">/${item.slug}</small>
-            </td>
-            <td>
-                <span class="status-badge status-${item.status}">
-                    ${item.status}
-                </span>
-            </td>
-            <td>${item.author}</td>
-            <td>${item.createdAt.toLocaleDateString()}</td>
-            <td>
-                <div class="action-buttons">
-                    <button class="btn-small btn-edit" onclick="editContent('${item.id}')">
-                        Edit
-                    </button>
-                    <button class="btn-small btn-delete" onclick="deleteContent('${item.id}')">
-                        Delete
-                    </button>
-                    <button class="btn-small btn-visit" onclick="visitContent('${item.slug}')">
-                        Visit
-                    </button>
-                </div>
-            </td>
-        `;
-        contentTableBody.appendChild(row);
+        const card = createContentCard(item);
+        contentGrid.appendChild(card);
     });
+}
+
+function createContentCard(item) {
+    const card = document.createElement('div');
+    card.className = 'content-card';
+    
+    // Extract first paragraph as excerpt
+    const excerpt = extractExcerpt(item.content);
+    
+    // Format date
+    const formattedDate = item.createdAt.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+    
+    card.innerHTML = `
+        <div class="content-card-header">
+            <h3 class="content-title">${escapeHtml(item.title)}</h3>
+            <div class="content-slug">/${item.slug}</div>
+            <div class="content-meta">
+                <span class="content-author">By ${escapeHtml(item.author)}</span>
+                <span class="content-date">${formattedDate}</span>
+            </div>
+        </div>
+        
+        <div class="content-preview">
+            <p class="content-excerpt">${excerpt}</p>
+        </div>
+        
+        ${item.tags && item.tags.length > 0 ? `
+        <div class="content-tags">
+            ${item.tags.slice(0, 3).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
+            ${item.tags.length > 3 ? `<span class="tag">+${item.tags.length - 3} more</span>` : ''}
+        </div>
+        ` : ''}
+        
+        <div class="content-footer">
+            <span class="status-badge status-${item.status}">
+                ${item.status}
+            </span>
+            <div class="action-buttons">
+                <button class="btn-small btn-edit" onclick="editContent('${item.id}')">
+                    Edit
+                </button>
+                <button class="btn-small btn-delete" onclick="deleteContent('${item.id}')">
+                    Delete
+                </button>
+                <button class="btn-small btn-visit" onclick="visitContent('${item.slug}')">
+                    Visit
+                </button>
+            </div>
+        </div>
+    `;
+    
+    return card;
+}
+
+function extractExcerpt(content) {
+    // Remove markdown formatting and get first paragraph
+    const plainText = content
+        .replace(/#{1,6}\s+/g, '') // Remove headers
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+        .replace(/\*(.*?)\*/g, '$1') // Remove italic
+        .replace(/`(.*?)`/g, '$1') // Remove inline code
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links
+        .replace(/\n\n/g, ' ') // Replace double newlines
+        .replace(/\n/g, ' ') // Replace single newlines
+        .trim();
+    
+    // Get first sentence or first 150 characters
+    const firstSentence = plainText.split('.')[0];
+    if (firstSentence.length > 150) {
+        return plainText.substring(0, 150) + '...';
+    }
+    return firstSentence + (plainText.length > firstSentence.length ? '...' : '');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 async function editContent(id) {
@@ -326,7 +394,7 @@ function cancelEdit() {
 }
 
 async function deleteContent(id) {
-    if (!confirm('Are you sure you want to delete this content?')) return;
+    if (!confirm('Are you sure you want to delete this content? This action cannot be undone.')) return;
     
     showLoading();
     
@@ -334,10 +402,10 @@ async function deleteContent(id) {
         await firebaseServices.db.collection('content').doc(id).delete();
         await loadContent();
         await generateApiJson();
-        alert('Content deleted successfully!');
+        showNotification('Content deleted successfully!', 'success');
     } catch (error) {
         console.error('Error deleting content:', error);
-        alert('Error deleting content: ' + error.message);
+        showNotification('Error deleting content: ' + error.message, 'error');
     } finally {
         hideLoading();
     }
@@ -381,6 +449,95 @@ async function generateApiJson() {
     } catch (error) {
         console.error('Error generating API JSON:', error);
     }
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+        <div class="notification-content">
+            <span class="notification-message">${message}</span>
+            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
+        </div>
+    `;
+    
+    // Add styles if not already added
+    if (!document.querySelector('#notification-styles')) {
+        const styles = document.createElement('style');
+        styles.id = 'notification-styles';
+        styles.textContent = `
+            .notification {
+                position: fixed;
+                top: 2rem;
+                right: 2rem;
+                z-index: 10000;
+                max-width: 400px;
+                padding: 1rem 1.5rem;
+                border-radius: 12px;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+                animation: slideInRight 0.3s ease-out;
+            }
+            
+            .notification-success {
+                background: linear-gradient(135deg, #48bb78, #38a169);
+                color: white;
+            }
+            
+            .notification-error {
+                background: linear-gradient(135deg, #e53e3e, #c53030);
+                color: white;
+            }
+            
+            .notification-content {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 1rem;
+            }
+            
+            .notification-close {
+                background: none;
+                border: none;
+                color: inherit;
+                font-size: 1.5rem;
+                cursor: pointer;
+                padding: 0;
+                width: 24px;
+                height: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 50%;
+                transition: background-color 0.2s;
+            }
+            
+            .notification-close:hover {
+                background: rgba(255, 255, 255, 0.2);
+            }
+            
+            @keyframes slideInRight {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+        `;
+        document.head.appendChild(styles);
+    }
+    
+    document.body.appendChild(notification);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
 }
 
 // Make functions globally available

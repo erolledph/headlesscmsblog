@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Content Management System</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -15,17 +18,17 @@
     <!-- Login Page -->
     <div id="loginPage" class="login-container">
         <div class="login-form">
-            <h1>Admin Login</h1>
+            <h1>Admin Portal</h1>
             <form id="loginForm">
                 <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" required>
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" required placeholder="admin@example.com">
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" required>
+                    <input type="password" id="password" required placeholder="Enter your password">
                 </div>
-                <button type="submit" class="btn-primary">Login</button>
+                <button type="submit" class="btn-primary">Sign In</button>
             </form>
             <div id="loginError" class="error-message"></div>
         </div>
@@ -36,14 +39,14 @@
         <!-- Sidebar Navigation -->
         <nav class="sidebar">
             <div class="sidebar-header">
-                <h2>CMS Admin</h2>
-                <button id="logoutBtn" class="logout-btn">Logout</button>
+                <h2>CMS Pro</h2>
+                <button id="logoutBtn" class="logout-btn">Sign Out</button>
             </div>
             <ul class="nav-menu">
-                <li><a href="#" data-tab="overview" class="nav-link active">Overview</a></li>
-                <li><a href="#" data-tab="manage" class="nav-link">Manage Content</a></li>
-                <li><a href="#" data-tab="create" class="nav-link">Create Content</a></li>
-                <li><a href="#" data-tab="docs" class="nav-link">Documentation</a></li>
+                <li><a href="#" data-tab="overview" class="nav-link active">📊 Overview</a></li>
+                <li><a href="#" data-tab="manage" class="nav-link">📋 Manage Content</a></li>
+                <li><a href="#" data-tab="create" class="nav-link">✏️ Create Content</a></li>
+                <li><a href="#" data-tab="docs" class="nav-link">📚 API Documentation</a></li>
             </ul>
         </nav>
 
@@ -51,7 +54,10 @@
         <main class="main-content">
             <!-- Overview Tab -->
             <div id="overview" class="tab-content active">
-                <h1>Dashboard Overview</h1>
+                <div class="page-header">
+                    <h1>Dashboard Overview</h1>
+                    <p class="page-subtitle">Monitor your content performance and API usage</p>
+                </div>
                 <div class="stats-grid">
                     <div class="stat-card">
                         <h3>Total Content</h3>
@@ -75,109 +81,116 @@
             <!-- Manage Content Tab -->
             <div id="manage" class="tab-content">
                 <div class="content-header">
-                    <h1>Manage Content</h1>
-                    <button id="refreshContent" class="btn-secondary">Refresh</button>
+                    <div class="page-header">
+                        <h1>Manage Content</h1>
+                        <p class="page-subtitle">View, edit, and organize your content</p>
+                    </div>
+                    <button id="refreshContent" class="btn-secondary">🔄 Refresh</button>
                 </div>
-                <div class="content-table-container">
-                    <table class="content-table">
-                        <thead>
-                            <tr>
-                                <th>Title</th>
-                                <th>Status</th>
-                                <th>Author</th>
-                                <th>Created</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="contentTableBody">
-                            <!-- Content will be loaded here -->
-                        </tbody>
-                    </table>
+                <div id="contentGrid" class="content-grid">
+                    <!-- Content cards will be loaded here -->
                 </div>
             </div>
 
             <!-- Create Content Tab -->
             <div id="create" class="tab-content">
-                <h1 id="formTitle">Create New Content</h1>
+                <div class="page-header">
+                    <h1 id="formTitle">Create New Content</h1>
+                    <p class="page-subtitle">Write and publish your content with full SEO optimization</p>
+                </div>
+                
                 <form id="contentForm" class="content-form">
                     <input type="hidden" id="editingId" value="">
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="title">Title *</label>
-                            <input type="text" id="title" required>
+                            <label for="title">Title</label>
+                            <input type="text" id="title" required placeholder="Enter your content title">
                         </div>
                         <div class="form-group">
-                            <label for="slug">Slug *</label>
-                            <input type="text" id="slug" required>
+                            <label for="slug">URL Slug</label>
+                            <input type="text" id="slug" required placeholder="auto-generated-from-title">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="content">Content (Markdown) *</label>
-                        <textarea id="content" rows="15" placeholder="Write your content in Markdown format..." required></textarea>
+                        <label for="content">Content (Markdown)</label>
+                        <textarea id="content" rows="20" placeholder="# Your Content Title
+
+Write your content here using **Markdown** formatting...
+
+## Subheading
+
+- List item 1
+- List item 2
+
+[Link text](https://example.com)" required></textarea>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label for="featuredImageUrl">Featured Image URL</label>
-                            <input type="url" id="featuredImageUrl">
+                            <input type="url" id="featuredImageUrl" placeholder="https://example.com/image.jpg">
                         </div>
                         <div class="form-group">
-                            <label for="author">Author *</label>
-                            <input type="text" id="author" required>
+                            <label for="author">Author</label>
+                            <input type="text" id="author" required placeholder="Author Name">
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label for="metaDescription">Meta Description</label>
-                            <textarea id="metaDescription" rows="3"></textarea>
+                            <textarea id="metaDescription" rows="3" placeholder="Brief description for search engines (150-160 characters)"></textarea>
                         </div>
                         <div class="form-group">
                             <label for="seoTitle">SEO Title</label>
-                            <input type="text" id="seoTitle">
+                            <input type="text" id="seoTitle" placeholder="Optimized title for search engines">
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="categories">Categories (comma-separated)</label>
-                            <input type="text" id="categories" placeholder="Web Development, Cloud">
+                            <label for="categories">Categories</label>
+                            <input type="text" id="categories" placeholder="Web Development, Cloud Computing">
                         </div>
                         <div class="form-group">
-                            <label for="tags">Tags (comma-separated)</label>
-                            <input type="text" id="tags" placeholder="nextjs, firebase, cloudflare">
+                            <label for="tags">Tags</label>
+                            <input type="text" id="tags" placeholder="nextjs, firebase, cloudflare, tutorial">
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="keywords">Keywords (comma-separated)</label>
-                            <input type="text" id="keywords" placeholder="nextjs, firebase, cloudflare">
+                            <label for="keywords">SEO Keywords</label>
+                            <input type="text" id="keywords" placeholder="nextjs tutorial, firebase hosting, cloudflare">
                         </div>
                         <div class="form-group">
-                            <label for="status">Status *</label>
+                            <label for="status">Publication Status</label>
                             <select id="status" required>
-                                <option value="draft">Draft</option>
-                                <option value="published">Published</option>
+                                <option value="draft">📝 Draft</option>
+                                <option value="published">🚀 Published</option>
                             </select>
                         </div>
                     </div>
 
                     <div class="form-actions">
-                        <button type="submit" class="btn-primary">Save Content</button>
-                        <button type="button" id="cancelEdit" class="btn-secondary hidden">Cancel</button>
+                        <button type="submit" class="btn-primary">💾 Save Content</button>
+                        <button type="button" id="cancelEdit" class="btn-secondary hidden">❌ Cancel</button>
                     </div>
                 </form>
             </div>
 
             <!-- Documentation Tab -->
             <div id="docs" class="tab-content">
-                <h1>API Documentation</h1>
+                <div class="page-header">
+                    <h1>API Documentation</h1>
+                    <p class="page-subtitle">Complete guide to accessing your content via API</p>
+                </div>
+                
                 <div class="docs-content">
                     <section class="docs-section">
-                        <h2>API Endpoint</h2>
+                        <h2>🔗 API Endpoint</h2>
                         <p>Your content is available at:</p>
                         <code class="api-endpoint">GET /api/content.json</code>
                         
@@ -204,7 +217,7 @@
                     </section>
 
                     <section class="docs-section">
-                        <h2>JavaScript (Fetch API)</h2>
+                        <h2>🌐 JavaScript (Fetch API)</h2>
                         <pre class="code-block">// Fetch all content
 fetch('/api/content.json')
   .then(response => response.json())
@@ -222,7 +235,7 @@ fetch('/api/content.json')
                     </section>
 
                     <section class="docs-section">
-                        <h2>Node.js</h2>
+                        <h2>🟢 Node.js</h2>
                         <pre class="code-block">const https = require('https');
 
 // Fetch all content
@@ -249,8 +262,8 @@ async function getContent() {
                     </section>
 
                     <section class="docs-section">
-                        <h2>PHP</h2>
-                        <pre class="code-block">&lt;?php
+                        <h2>🐘 PHP</h2>
+                        <pre class="code-block"><?php
 // Fetch all content
 $json = file_get_contents('https://yourdomain.com/api/content.json');
 $content = json_decode($json, true);
@@ -266,11 +279,11 @@ function findBySlug($content, $slug) {
 }
 
 $specificPost = findBySlug($content, 'your-slug-here');
-?&gt;</pre>
+?></pre>
                     </section>
 
                     <section class="docs-section">
-                        <h2>Python</h2>
+                        <h2>🐍 Python</h2>
                         <pre class="code-block">import requests
 import json
 
@@ -286,7 +299,7 @@ specific_post = find_by_slug(content, 'your-slug-here')</pre>
                     </section>
 
                     <section class="docs-section">
-                        <h2>cURL</h2>
+                        <h2>💻 cURL</h2>
                         <pre class="code-block"># Fetch all content
 curl -X GET https://yourdomain.com/api/content.json
 
