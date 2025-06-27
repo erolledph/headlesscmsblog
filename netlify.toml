@@ -7,3 +7,11 @@ publish = "."
 from = "/api/content.json"
 to = "/.netlify/functions/content"
 status = 200
+
+[[redirects]]
+from = "/api/content/:slug"
+to = "/.netlify/functions/content-by-slug"
+status = 200
+
+[functions]
+node_bundler = "esbuild"

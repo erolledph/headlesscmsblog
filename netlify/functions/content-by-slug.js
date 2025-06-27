@@ -69,41 +69,54 @@ exports.handler = async (event, context) => {
       initializeFirebase();
     }
 
-    console.log('Fetching content from Firestore...');
+    // Extract slug from path
+    const slug = event.path.split('/').pop();
+    
+    if (!slug) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Slug parameter is required' })
+      };
+    }
 
-    // Get published content from Firestore
+    console.log(`Fetching content for slug: ${slug}`);
+
+    // Get specific content by slug
     const snapshot = await db.collection('content')
+      .where('slug', '==', slug)
       .where('status', '==', 'published')
-      .orderBy('publishDate', 'desc')
+      .limit(1)
       .get();
 
-    console.log(`Found ${snapshot.size} published documents`);
+    if (snapshot.empty) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: 'Content not found' })
+      };
+    }
 
-    const content = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      console.log(`Processing document: ${doc.id}`);
-      
-      content.push({
-        id: doc.id,
-        title: data.title || '',
-        slug: data.slug || '',
-        content: data.content || '',
-        featuredImageUrl: data.featuredImageUrl || '',
-        metaDescription: data.metaDescription || '',
-        seoTitle: data.seoTitle || data.title || '',
-        keywords: Array.isArray(data.keywords) ? data.keywords : [],
-        author: data.author || '',
-        categories: Array.isArray(data.categories) ? data.categories : [],
-        tags: Array.isArray(data.tags) ? data.tags : [],
-        status: data.status || 'draft',
-        publishDate: data.publishDate?.toDate?.()?.toISOString() || null,
-        createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
-        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null
-      });
-    });
-
-    console.log(`Returning ${content.length} content items`);
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+    
+    const content = {
+      id: doc.id,
+      title: data.title || '',
+      slug: data.slug || '',
+      content: data.content || '',
+      featuredImageUrl: data.featuredImageUrl || '',
+      metaDescription: data.metaDescription || '',
+      seoTitle: data.seoTitle || data.title || '',
+      keywords: Array.isArray(data.keywords) ? data.keywords : [],
+      author: data.author || '',
+      categories: Array.isArray(data.categories) ? data.categories : [],
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      status: data.status || 'draft',
+      publishDate: data.publishDate?.toDate?.()?.toISOString() || null,
+      createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null
+    };
 
     return {
       statusCode: 200,
