@@ -11,14 +11,24 @@ const initializeFirebase = () => {
       const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
       if (!projectId || !clientEmail || !privateKey) {
-        throw new Error('Missing Firebase environment variables');
+        throw new Error('Missing Firebase environment variables. Please check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY');
       }
 
-      // Clean and format the private key
-      const formattedPrivateKey = privateKey
-        .replace(/\\n/g, '\n')
-        .replace(/"/g, '')
-        .trim();
+      // Clean and format the private key properly
+      let formattedPrivateKey = privateKey;
+      
+      // Handle different private key formats
+      if (privateKey.includes('\\n')) {
+        formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
+      }
+      
+      // Remove quotes if present
+      formattedPrivateKey = formattedPrivateKey.replace(/^"(.*)"$/, '$1');
+      
+      // Ensure proper BEGIN/END format
+      if (!formattedPrivateKey.includes('-----BEGIN PRIVATE KEY-----')) {
+        throw new Error('Invalid private key format. Must include BEGIN/END markers');
+      }
 
       // Initialize Firebase Admin
       admin.initializeApp({
@@ -140,13 +150,27 @@ exports.handler = async (event, context) => {
   } catch (error) {
     console.error('Function error:', error);
     
+    // Provide more detailed error information
+    let errorMessage = error.message;
+    let errorCode = error.code || 'unknown';
+    
+    // Handle specific Firebase errors
+    if (error.message.includes('DECODER routines')) {
+      errorMessage = 'Firebase private key format error. Please check your FIREBASE_PRIVATE_KEY environment variable.';
+      errorCode = 'INVALID_PRIVATE_KEY';
+    } else if (error.message.includes('Missing Firebase environment variables')) {
+      errorMessage = 'Missing Firebase configuration. Please set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY environment variables.';
+      errorCode = 'MISSING_CONFIG';
+    }
+    
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
         error: 'Internal server error',
-        message: error.message,
-        code: error.code || 'unknown'
+        message: errorMessage,
+        code: errorCode,
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       })
     };
   }
