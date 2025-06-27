@@ -16,22 +16,40 @@ const serviceAccount = {
 };
 
 let db;
+let isInitialized = false;
 
 // Initialize Firebase Admin only once
 const initializeFirebase = () => {
-  if (!admin.apps.length) {
+  if (!isInitialized) {
     try {
+      // Delete any existing apps first
+      admin.apps.forEach(app => {
+        if (app) {
+          app.delete();
+        }
+      });
+
+      // Initialize with explicit configuration
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        projectId: 'ectawks'
+        projectId: serviceAccount.project_id,
+        databaseURL: `https://${serviceAccount.project_id}-default-rtdb.firebaseio.com/`
       });
+      
       db = admin.firestore();
+      
+      // Configure Firestore settings
+      db.settings({
+        ignoreUndefinedProperties: true
+      });
+      
+      isInitialized = true;
       console.log('Firebase Admin initialized successfully');
     } catch (error) {
       console.error('Error initializing Firebase Admin:', error);
-      throw error;
+      throw new Error(`Firebase initialization failed: ${error.message}`);
     }
-  } else {
+  } else if (!db) {
     db = admin.firestore();
   }
 };
@@ -64,46 +82,75 @@ exports.handler = async (event, context) => {
   }
 
   try {
+    console.log('Starting content fetch...');
+    
     // Initialize Firebase if not already done
-    if (!db) {
-      initializeFirebase();
-    }
+    initializeFirebase();
 
-    console.log('Fetching content from Firestore...');
+    console.log('Firebase initialized, fetching content from Firestore...');
 
-    // Get published content from Firestore
-    const snapshot = await db.collection('content')
+    // Get published content from Firestore with error handling
+    const contentRef = db.collection('content');
+    const query = contentRef
       .where('status', '==', 'published')
-      .orderBy('publishDate', 'desc')
-      .get();
+      .orderBy('publishDate', 'desc');
+
+    const snapshot = await query.get();
 
     console.log(`Found ${snapshot.size} published documents`);
 
+    if (snapshot.empty) {
+      console.log('No published content found');
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify([])
+      };
+    }
+
     const content = [];
     snapshot.forEach(doc => {
-      const data = doc.data();
-      console.log(`Processing document: ${doc.id}`);
-      
-      content.push({
-        id: doc.id,
-        title: data.title || '',
-        slug: data.slug || '',
-        content: data.content || '',
-        featuredImageUrl: data.featuredImageUrl || '',
-        metaDescription: data.metaDescription || '',
-        seoTitle: data.seoTitle || data.title || '',
-        keywords: Array.isArray(data.keywords) ? data.keywords : [],
-        author: data.author || '',
-        categories: Array.isArray(data.categories) ? data.categories : [],
-        tags: Array.isArray(data.tags) ? data.tags : [],
-        status: data.status || 'draft',
-        publishDate: data.publishDate?.toDate?.()?.toISOString() || null,
-        createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
-        updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null
-      });
+      try {
+        const data = doc.data();
+        console.log(`Processing document: ${doc.id}`);
+        
+        // Safely handle timestamp conversion
+        const publishDate = data.publishDate ? 
+          (data.publishDate.toDate ? data.publishDate.toDate().toISOString() : data.publishDate) : 
+          null;
+        
+        const createdAt = data.createdAt ? 
+          (data.createdAt.toDate ? data.createdAt.toDate().toISOString() : data.createdAt) : 
+          null;
+        
+        const updatedAt = data.updatedAt ? 
+          (data.updatedAt.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt) : 
+          null;
+
+        content.push({
+          id: doc.id,
+          title: data.title || '',
+          slug: data.slug || '',
+          content: data.content || '',
+          featuredImageUrl: data.featuredImageUrl || '',
+          metaDescription: data.metaDescription || '',
+          seoTitle: data.seoTitle || data.title || '',
+          keywords: Array.isArray(data.keywords) ? data.keywords : [],
+          author: data.author || '',
+          categories: Array.isArray(data.categories) ? data.categories : [],
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          status: data.status || 'draft',
+          publishDate,
+          createdAt,
+          updatedAt
+        });
+      } catch (docError) {
+        console.error(`Error processing document ${doc.id}:`, docError);
+        // Continue processing other documents
+      }
     });
 
-    console.log(`Returning ${content.length} content items`);
+    console.log(`Successfully processed ${content.length} content items`);
 
     return {
       statusCode: 200,
@@ -112,15 +159,30 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('Error fetching content:', error);
+    console.error('Error in content function:', error);
+    
+    // Provide more specific error information
+    let errorMessage = 'Internal server error';
+    let statusCode = 500;
+
+    if (error.code === 'permission-denied') {
+      errorMessage = 'Permission denied accessing Firestore';
+      statusCode = 403;
+    } else if (error.code === 'unauthenticated') {
+      errorMessage = 'Firebase authentication failed';
+      statusCode = 401;
+    } else if (error.message.includes('Firebase')) {
+      errorMessage = `Firebase error: ${error.message}`;
+    }
     
     return {
-      statusCode: 500,
+      statusCode,
       headers,
       body: JSON.stringify({ 
-        error: 'Internal server error',
+        error: errorMessage,
         message: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        code: error.code || 'unknown',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       })
     };
   }
