@@ -53,10 +53,9 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    // Get published content from Firestore
+    // Get published content from Firestore - simplified query to avoid index requirement
     const snapshot = await db.collection('content')
       .where('status', '==', 'published')
-      .orderBy('publishDate', 'desc')
       .get();
 
     const content = [];
@@ -79,6 +78,13 @@ exports.handler = async (event, context) => {
         createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null
       });
+    });
+
+    // Sort by publishDate in JavaScript instead of Firestore
+    content.sort((a, b) => {
+      const dateA = new Date(a.publishDate || a.createdAt || 0);
+      const dateB = new Date(b.publishDate || b.createdAt || 0);
+      return dateB - dateA; // Descending order (newest first)
     });
 
     return {
