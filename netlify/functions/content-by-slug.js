@@ -1,61 +1,41 @@
 const admin = require('firebase-admin');
 
-let db;
-let isInitialized = false;
-
-// Initialize Firebase Admin only once
+// Initialize Firebase Admin with proper error handling
 const initializeFirebase = () => {
-  if (!isInitialized) {
+  // Only initialize if not already done
+  if (admin.apps.length === 0) {
     try {
-      // Delete any existing apps first
-      admin.apps.forEach(app => {
-        if (app) {
-          app.delete();
-        }
-      });
-
-      // Get credentials from environment variables
-      const privateKey = process.env.FIREBASE_PRIVATE_KEY 
-        ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-        : null;
-      
-      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      // Get environment variables
       const projectId = process.env.FIREBASE_PROJECT_ID;
+      const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-      if (!privateKey || !clientEmail || !projectId) {
-        throw new Error('Missing required Firebase environment variables: FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL, or FIREBASE_PROJECT_ID');
+      if (!projectId || !clientEmail || !privateKey) {
+        throw new Error('Missing Firebase environment variables');
       }
 
-      // Create service account object from environment variables
-      const serviceAccount = {
-        type: "service_account",
-        project_id: projectId,
-        private_key: privateKey,
-        client_email: clientEmail,
-      };
+      // Clean and format the private key
+      const formattedPrivateKey = privateKey
+        .replace(/\\n/g, '\n')
+        .replace(/"/g, '')
+        .trim();
 
-      // Initialize with explicit configuration
+      // Initialize Firebase Admin
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: projectId,
-        databaseURL: `https://${projectId}-default-rtdb.firebaseio.com/`
+        credential: admin.credential.cert({
+          type: "service_account",
+          project_id: projectId,
+          private_key: formattedPrivateKey,
+          client_email: clientEmail,
+        }),
+        projectId: projectId
       });
-      
-      db = admin.firestore();
-      
-      // Configure Firestore settings
-      db.settings({
-        ignoreUndefinedProperties: true
-      });
-      
-      isInitialized = true;
+
       console.log('Firebase Admin initialized successfully');
     } catch (error) {
-      console.error('Error initializing Firebase Admin:', error);
-      throw new Error(`Firebase initialization failed: ${error.message}`);
+      console.error('Firebase initialization error:', error);
+      throw error;
     }
-  } else if (!db) {
-    db = admin.firestore();
   }
 };
 
@@ -87,9 +67,7 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    console.log('Starting content-by-slug fetch...');
-    
-    // Initialize Firebase if not already done
+    console.log('Initializing Firebase...');
     initializeFirebase();
 
     // Extract slug from path
@@ -104,16 +82,14 @@ exports.handler = async (event, context) => {
       };
     }
 
-    console.log(`Fetching content for slug: ${slug}`);
+    console.log(`Querying content for slug: ${slug}`);
+    const db = admin.firestore();
 
-    // Get specific content by slug
-    const contentRef = db.collection('content');
-    const query = contentRef
+    const snapshot = await db.collection('content')
       .where('slug', '==', slug)
       .where('status', '==', 'published')
-      .limit(1);
-
-    const snapshot = await query.get();
+      .limit(1)
+      .get();
 
     if (snapshot.empty) {
       return {
@@ -126,18 +102,18 @@ exports.handler = async (event, context) => {
     const doc = snapshot.docs[0];
     const data = doc.data();
     
-    // Safely handle timestamp conversion
-    const publishDate = data.publishDate ? 
-      (data.publishDate.toDate ? data.publishDate.toDate().toISOString() : data.publishDate) : 
-      null;
+    // Handle Firestore timestamps safely
+    const publishDate = data.publishDate && data.publishDate.toDate 
+      ? data.publishDate.toDate().toISOString() 
+      : data.publishDate || null;
     
-    const createdAt = data.createdAt ? 
-      (data.createdAt.toDate ? data.createdAt.toDate().toISOString() : data.createdAt) : 
-      null;
+    const createdAt = data.createdAt && data.createdAt.toDate 
+      ? data.createdAt.toDate().toISOString() 
+      : data.createdAt || null;
     
-    const updatedAt = data.updatedAt ? 
-      (data.updatedAt.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt) : 
-      null;
+    const updatedAt = data.updatedAt && data.updatedAt.toDate 
+      ? data.updatedAt.toDate().toISOString() 
+      : data.updatedAt || null;
 
     const content = {
       id: doc.id,
@@ -164,33 +140,15 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('Error in content-by-slug function:', error);
-    
-    // Provide more specific error information
-    let errorMessage = 'Internal server error';
-    let statusCode = 500;
-
-    if (error.code === 'permission-denied') {
-      errorMessage = 'Permission denied accessing Firestore';
-      statusCode = 403;
-    } else if (error.code === 'unauthenticated') {
-      errorMessage = 'Firebase authentication failed';
-      statusCode = 401;
-    } else if (error.message.includes('Firebase')) {
-      errorMessage = `Firebase error: ${error.message}`;
-    } else if (error.message.includes('Missing required Firebase environment variables')) {
-      errorMessage = 'Firebase configuration error: Missing environment variables';
-      statusCode = 500;
-    }
+    console.error('Function error:', error);
     
     return {
-      statusCode,
+      statusCode: 500,
       headers,
       body: JSON.stringify({ 
-        error: errorMessage,
+        error: 'Internal server error',
         message: error.message,
-        code: error.code || 'unknown',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        code: error.code || 'unknown'
       })
     };
   }
