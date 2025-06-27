@@ -1,0 +1,9 @@
+[build]
+functions = "netlify/functions"
+command = "echo 'Static files are ready for deployment. No build process required.'"
+publish = "."
+
+[[redirects]]
+from = "/api/content.json"
+to = "/.netlify/functions/content"
+status = 200

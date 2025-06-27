@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "start": "servor --reload",
+    "dev": "servor --reload",
+    "build": "echo 'Static files are ready for deployment. No build process required.'"
+  },
+  "dependencies": {
+    "servor": "^4.0.2",
+    "firebase-admin": "^12.0.0"
+  }
+}
